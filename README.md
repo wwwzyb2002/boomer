@@ -27,8 +27,8 @@ If locust introduces breaking changes, boomer will have a tagged version that wo
 ```bash
 # Install the master branch
 $ go get github.com/wwwzyb2002/boomer@master
-# Install a tagged version that works with locust 1.6.0
-$ go get github.com/wwwzyb2002/boomer@v1.6.0
+# Install a tagged version that works with locust
+$ go get github.com/wwwzyb2002/boomer@v1.7.0
 ```
 
 ### Build
