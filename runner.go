@@ -29,10 +29,6 @@ const (
 type runner struct {
 	state string
 
-	tasks           []*Task
-	totalTaskWeight int
-	runTask         []*Task // goroutine execute tasks according to the list
-
 	rateLimiter      RateLimiter
 	rateLimitEnabled bool
 	stats            *requestStats
@@ -53,7 +49,7 @@ type runner struct {
 
 	logger *log.Logger
 
-	userInstFunc UserInstFunc
+	userConfig *UserConfig
 }
 
 func (r *runner) setLogger(logger *log.Logger) {
@@ -64,7 +60,7 @@ func (r *runner) setLogger(logger *log.Logger) {
 
 // safeRun runs fn and recovers from unexpected panics.
 // it prevents panics from Task.Fn crashing boomer.
-func (r *runner) safeRun(fn func(User), user User) {
+func (r *runner) safeRun(fn func(*User), user *User) {
 	defer func() {
 		// don't panic
 		err := recover()
@@ -138,12 +134,13 @@ func (r *runner) addWorkers(gapCount int) {
 		case <-r.shutdownChan:
 			return
 		default:
-			userInst, err := r.userInstFunc()
-			if err != nil {
-				fmt.Println(err)
-				return
+			userInst := NewUser(r.userConfig)
+			if userInst.startFunc != nil {
+				err := userInst.startFunc(userInst)
+				if err != nil {
+					panic(err)
+				}
 			}
-			userInst.OnStart()
 
 			ctx, cancel := context.WithCancel(context.TODO())
 			r.cancelFuncs = append(r.cancelFuncs, cancel)
@@ -151,21 +148,29 @@ func (r *runner) addWorkers(gapCount int) {
 				for {
 					select {
 					case <-ctx.Done():
-						userInst.OnStop()
+						if userInst.stopFunc != nil {
+							userInst.stopFunc(userInst)
+						}
 						return
 					case <-r.shutdownChan:
-						userInst.OnStop()
+						if userInst.stopFunc != nil {
+							userInst.stopFunc(userInst)
+						}
 						return
 					default:
 						if r.rateLimitEnabled {
 							blocked := r.rateLimiter.Acquire()
 							if !blocked {
-								task := GetNextTask(userInst.GetAllTasks())
+								task := GetNextTask(userInst.tasks)
 								r.safeRun(task.Fn, userInst)
 							}
 						} else {
-							task := GetNextTask(userInst.GetAllTasks())
+							task := GetNextTask(userInst.tasks)
 							r.safeRun(task.Fn, userInst)
+						}
+
+						if userInst.waitTimeFunc != nil {
+							time.Sleep(userInst.waitTimeFunc())
 						}
 					}
 				}
@@ -228,43 +233,6 @@ func (r *runner) spawnWorkers(spawnCount int, spawnCompleteFunc func()) {
 	}
 }
 
-// setTasks will set the runner's task list AND the total task weight
-// which is used to get a task later
-func (r *runner) setTasks(t []*Task) {
-	r.tasks = t
-	if len(r.tasks) == 1 {
-		r.totalTaskWeight = 1
-		r.runTask = t
-		return
-	}
-
-	weightSum := 0
-	for _, task := range r.tasks {
-		if task.Weight <= 0 { //Ensure that user input values are legal
-			task.Weight = 1
-		}
-		weightSum += task.Weight
-	}
-	r.totalTaskWeight = weightSum
-
-	r.runTask = make([]*Task, r.totalTaskWeight)
-	index := 0
-	for weightSum > 0 { //Assign task order according to weight
-		for _, task := range r.tasks {
-			if task.Weight > 0 {
-				r.runTask[index] = task
-				index++
-				task.Weight--
-				weightSum--
-			}
-		}
-	}
-}
-
-func (r *runner) getTask(index int) *Task {
-	return r.runTask[index]
-}
-
 func (r *runner) startSpawning(spawnCount int, spawnRate float64, spawnCompleteFunc func()) {
 	Events.Publish(EVENT_SPAWN, spawnCount, spawnRate)
 
@@ -286,10 +254,10 @@ type localRunner struct {
 	spawnCount int
 }
 
-func newLocalRunner(userInstFunc UserInstFunc, rateLimiter RateLimiter, spawnCount int, spawnRate float64) (r *localRunner) {
+func newLocalRunner(userConfig *UserConfig, rateLimiter RateLimiter, spawnCount int, spawnRate float64) (r *localRunner) {
 	r = &localRunner{}
 	r.setLogger(log.Default())
-	r.userInstFunc = userInstFunc
+	r.userConfig = userConfig
 	r.spawnRate = spawnRate
 	r.spawnCount = spawnCount
 	r.shutdownChan = make(chan bool)
@@ -363,12 +331,12 @@ type slaveRunner struct {
 	client                     client
 }
 
-func newSlaveRunner(masterHost string, masterPort int, userInstFunc UserInstFunc, rateLimiter RateLimiter) (r *slaveRunner) {
+func newSlaveRunner(masterHost string, masterPort int, userConfig *UserConfig, rateLimiter RateLimiter) (r *slaveRunner) {
 	r = &slaveRunner{}
 	r.setLogger(log.Default())
 	r.masterHost = masterHost
 	r.masterPort = masterPort
-	r.userInstFunc = userInstFunc
+	r.userConfig = userConfig
 	r.waitForAck = sync.WaitGroup{}
 	r.nodeID = getNodeID()
 	r.shutdownChan = make(chan bool)

@@ -2,7 +2,6 @@ package boomer
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"math"
 	"os"
@@ -14,22 +13,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-type SampleUser struct {
-	tasks []*Task
-}
-
-func (t *SampleUser) OnStart() {
-	fmt.Println("OnStart")
-}
-
-func (t *SampleUser) OnStop() {
-	fmt.Println("OnStop")
-}
-
-func (t *SampleUser) GetAllTasks() []*Task {
-	return t.tasks
-}
 
 var _ = Describe("Test Boomer", func() {
 	It("test new instance", func() {
@@ -94,17 +77,13 @@ var _ = Describe("Test Boomer", func() {
 		count := int64(0)
 		taskA := &Task{
 			Name: "increaseCount",
-			Fn: func(u User) {
+			Fn: func(u *User) {
 				atomic.AddInt64(&count, 1)
 				runtime.Goexit()
 			},
 		}
 
-		go b.Run(func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA},
-			}, nil
-		})
+		go b.Run(&UserConfig{Tasks: []*Task{taskA}})
 		defer b.Quit()
 		defer os.Remove("cpu.pprof")
 		defer os.Remove("mem.pprof")
@@ -123,16 +102,12 @@ var _ = Describe("Test Boomer", func() {
 		count := int64(0)
 		taskA := &Task{
 			Name: "increaseCount",
-			Fn: func(User) {
+			Fn: func(*User) {
 				atomic.AddInt64(&count, 1)
 				runtime.Goexit()
 			},
 		}
-		b.Run(func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA},
-			}, nil
-		})
+		b.Run(&UserConfig{Tasks: []*Task{taskA}})
 		defer b.Quit()
 
 		serverMessage := newGenericMessage("spawn", map[string]interface{}{
@@ -160,23 +135,19 @@ var _ = Describe("Test Boomer", func() {
 		count := 0
 		taskA := &Task{
 			Name: "increaseCount",
-			Fn: func(user User) {
+			Fn: func(*User) {
 				count++
 			},
 		}
 		taskWithoutName := &Task{
 			Name: "",
-			Fn: func(User) {
+			Fn: func(*User) {
 				count++
 			},
 		}
 		runTasks = "increaseCount,foobar"
 
-		runUserForTest(func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA, taskWithoutName},
-			}, nil
-		})
+		runUserForTest(&UserConfig{Tasks: []*Task{taskA, taskWithoutName}})
 
 		Expect(count).To(Equal(2))
 	})
@@ -215,17 +186,13 @@ var _ = Describe("Test Boomer", func() {
 		count := int64(0)
 		taskA := &Task{
 			Name: "increaseCount",
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				atomic.AddInt64(&count, 1)
 				runtime.Goexit()
 			},
 		}
 
-		go Run(func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA},
-			}, nil
-		})
+		go Run(&UserConfig{Tasks: []*Task{taskA}})
 		time.Sleep(50 * time.Millisecond)
 		defer defaultBoomer.Quit()
 
@@ -288,7 +255,7 @@ var _ = Describe("Test Boomer", func() {
 		masterHost := "127.0.0.1"
 		masterPort := 5557
 		defaultBoomer = NewBoomer(masterHost, masterPort)
-		defaultBoomer.slaveRunner = newSlaveRunner(masterHost, masterPort, nil, nil)
+		defaultBoomer.slaveRunner = newSlaveRunner(masterHost, masterPort, &UserConfig{}, nil)
 		RecordFailure("udp", "bar", int64(2), "udp error")
 
 		var requestFailureMsg *requestFailure
@@ -299,7 +266,7 @@ var _ = Describe("Test Boomer", func() {
 
 		// standalone mode
 		defaultBoomer = NewStandaloneBoomer(1, 1)
-		defaultBoomer.localRunner = newLocalRunner(nil, nil, 1, 1)
+		defaultBoomer.localRunner = newLocalRunner(&UserConfig{}, nil, 1, 1)
 		RecordFailure("udp", "bar", int64(2), "udp error")
 
 		Expect(defaultBoomer.localRunner.stats.requestFailureChan).To(Receive(&requestFailureMsg))

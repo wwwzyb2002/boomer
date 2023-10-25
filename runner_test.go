@@ -35,9 +35,9 @@ var _ = Describe("Test runner", func() {
 		Expect(func() {
 			runner := &runner{}
 			runner.setLogger(log.Default())
-			runner.safeRun(func(user User) {
+			runner.safeRun(func(user *User) {
 				panic("Runner will catch this panic")
-			}, &SampleUser{})
+			}, &User{})
 		}).Should(Not(Panic()))
 	})
 
@@ -80,17 +80,13 @@ var _ = Describe("Test runner", func() {
 	It("test add workers", func() {
 		taskA := &Task{
 			Weight: 10,
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(time.Second)
 			},
 			Name: "TaskA",
 		}
 
-		runner := newSlaveRunner("localhost", 5557, func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA},
-			}, nil
-		}, nil)
+		runner := newSlaveRunner("localhost", 5557, &UserConfig{Tasks: []*Task{taskA}}, nil)
 		runner.client = newClient("localhost", 5557, runner.nodeID)
 		defer runner.shutdown()
 
@@ -103,17 +99,13 @@ var _ = Describe("Test runner", func() {
 	It("test reduce workers", func() {
 		taskA := &Task{
 			Weight: 10,
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(time.Second)
 			},
 			Name: "TaskA",
 		}
 
-		runner := newSlaveRunner("localhost", 5557, func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA},
-			}, nil
-		}, nil)
+		runner := newSlaveRunner("localhost", 5557, &UserConfig{Tasks: []*Task{taskA}}, nil)
 		runner.client = newClient("localhost", 5557, runner.nodeID)
 		defer runner.shutdown()
 
@@ -128,16 +120,12 @@ var _ = Describe("Test runner", func() {
 	It("test localrunner", func() {
 		taskA := &Task{
 			Weight: 10,
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(time.Second)
 			},
 			Name: "TaskA",
 		}
-		runner := newLocalRunner(func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA},
-			}, nil
-		}, nil, 2, 1)
+		runner := newLocalRunner(&UserConfig{Tasks: []*Task{taskA}}, nil, 2, 1)
 
 		go runner.run()
 		defer runner.shutdown()
@@ -155,33 +143,25 @@ var _ = Describe("Test runner", func() {
 		})
 		taskA := &Task{
 			Weight: 10,
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(time.Second)
 			},
 			Name: "TaskA",
 		}
-		runner := newLocalRunner(func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA},
-			}, nil
-		}, nil, 2, 2)
+		runner := newLocalRunner(&UserConfig{Tasks: []*Task{taskA}}, nil, 2, 2)
 		runner.sendCustomMessage("TestLocalRunnerSendCustomMessage", "helloworld")
 	})
 
 	It("test spawn workers", func() {
 		taskA := &Task{
 			Weight: 10,
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(time.Second)
 			},
 			Name: "TaskA",
 		}
 
-		runner := newSlaveRunner("localhost", 5557, func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA},
-			}, nil
-		}, nil)
+		runner := newSlaveRunner("localhost", 5557, &UserConfig{Tasks: []*Task{taskA}}, nil)
 		runner.client = newClient("localhost", 5557, runner.nodeID)
 		defer runner.shutdown()
 
@@ -199,7 +179,7 @@ var _ = Describe("Test runner", func() {
 		oneTask := &Task{
 			Name:   "one",
 			Weight: 1,
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				atomic.AddInt64(&oneTaskCalls, 1)
 			},
 		}
@@ -207,7 +187,7 @@ var _ = Describe("Test runner", func() {
 		tenTask := &Task{
 			Name:   "ten",
 			Weight: 10,
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				atomic.AddInt64(&tenTaskCalls, 1)
 			},
 		}
@@ -215,16 +195,12 @@ var _ = Describe("Test runner", func() {
 		hundredTask := &Task{
 			Name:   "hundred",
 			Weight: 100,
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				atomic.AddInt64(&hundredTaskCalls, 1)
 			},
 		}
 
-		runner := newSlaveRunner("localhost", 5557, func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{oneTask, tenTask, hundredTask},
-			}, nil
-		}, nil)
+		runner := newSlaveRunner("localhost", 5557, &UserConfig{Tasks: []*Task{oneTask, tenTask, hundredTask}}, nil)
 		runner.client = newClient("localhost", 5557, runner.nodeID)
 		defer runner.shutdown()
 
@@ -266,21 +242,17 @@ var _ = Describe("Test runner", func() {
 
 	It("test spawn and stop", func() {
 		taskA := &Task{
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(time.Second)
 			},
 		}
 		taskB := &Task{
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(2 * time.Second)
 			},
 		}
 
-		runner := newSlaveRunner("localhost", 5557, func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA, taskB},
-			}, nil
-		}, nil)
+		runner := newSlaveRunner("localhost", 5557, &UserConfig{Tasks: []*Task{taskA, taskB}}, nil)
 		runner.state = stateSpawning
 		runner.client = newClient("localhost", 5557, runner.nodeID)
 		defer runner.shutdown()
@@ -304,16 +276,12 @@ var _ = Describe("Test runner", func() {
 
 	It("test stop", func() {
 		taskA := &Task{
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(time.Second)
 			},
 		}
 
-		runner := newSlaveRunner("localhost", 5557, func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA},
-			}, nil
-		}, nil)
+		runner := newSlaveRunner("localhost", 5557, &UserConfig{Tasks: []*Task{taskA}}, nil)
 
 		stopped := false
 		handler := func() {
@@ -329,15 +297,11 @@ var _ = Describe("Test runner", func() {
 
 	It("test on spawn message", func() {
 		taskA := &Task{
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(time.Second)
 			},
 		}
-		runner := newSlaveRunner("localhost", 5557, func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA},
-			}, nil
-		}, nil)
+		runner := newSlaveRunner("localhost", 5557, &UserConfig{Tasks: []*Task{taskA}}, nil)
 		runner.client = newClient("localhost", 5557, runner.nodeID)
 		runner.state = stateInit
 		defer runner.shutdown()
@@ -364,7 +328,7 @@ var _ = Describe("Test runner", func() {
 	})
 
 	It("test onQuitMessage", func() {
-		runner := newSlaveRunner("localhost", 5557, nil, nil)
+		runner := newSlaveRunner("localhost", 5557, &UserConfig{}, nil)
 		runner.client = newClient("localhost", 5557, "test")
 		runner.state = stateInit
 		defer runner.shutdown()
@@ -396,15 +360,11 @@ var _ = Describe("Test runner", func() {
 			eventCount++
 		})
 		taskA := &Task{
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(time.Second)
 			},
 		}
-		runner := newSlaveRunner("localhost", 5557, func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA},
-			}, nil
-		}, nil)
+		runner := newSlaveRunner("localhost", 5557, &UserConfig{Tasks: []*Task{taskA}}, nil)
 		runner.waitForAck = sync.WaitGroup{}
 		runner.waitForAck.Add(1)
 
@@ -415,21 +375,17 @@ var _ = Describe("Test runner", func() {
 
 	It("test on message", func() {
 		taskA := &Task{
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(time.Second)
 			},
 		}
 		taskB := &Task{
-			Fn: func(user User) {
+			Fn: func(user *User) {
 				time.Sleep(2 * time.Second)
 			},
 		}
 
-		runner := newSlaveRunner("localhost", 5557, func() (User, error) {
-			return &SampleUser{
-				tasks: []*Task{taskA, taskB},
-			}, nil
-		}, nil)
+		runner := newSlaveRunner("localhost", 5557, &UserConfig{Tasks: []*Task{taskA, taskB}}, nil)
 		runner.client = newClient("localhost", 5557, runner.nodeID)
 		runner.state = stateInit
 		defer runner.shutdown()
@@ -536,7 +492,7 @@ var _ = Describe("Test runner", func() {
 		masterPort := 6557
 
 		rateLimiter := NewStableRateLimiter(100, time.Second)
-		r := newSlaveRunner(masterHost, masterPort, nil, rateLimiter)
+		r := newSlaveRunner(masterHost, masterPort, &UserConfig{}, rateLimiter)
 		defer r.shutdown()
 		defer Events.Unsubscribe(EVENT_QUIT, r.onQuiting)
 

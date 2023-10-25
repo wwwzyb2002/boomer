@@ -118,7 +118,7 @@ func (b *Boomer) EnableMemoryProfile(memoryProfileFile string, duration time.Dur
 }
 
 // Run accepts a slice of Task and connects to the locust master.
-func (b *Boomer) Run(instFunc UserInstFunc) {
+func (b *Boomer) Run(userConfig *UserConfig) {
 	if b.cpuProfileFile != "" {
 		err := StartCPUProfile(b.cpuProfileFile, b.cpuProfileDuration)
 		if err != nil {
@@ -134,7 +134,7 @@ func (b *Boomer) Run(instFunc UserInstFunc) {
 
 	switch b.mode {
 	case DistributedMode:
-		b.slaveRunner = newSlaveRunner(b.masterHost, b.masterPort, instFunc, b.rateLimiter)
+		b.slaveRunner = newSlaveRunner(b.masterHost, b.masterPort, userConfig, b.rateLimiter)
 		b.slaveRunner.setLogger(b.logger)
 		b.logger.Println("new slave runner")
 		for _, o := range b.outputs {
@@ -142,7 +142,7 @@ func (b *Boomer) Run(instFunc UserInstFunc) {
 		}
 		b.slaveRunner.run()
 	case StandaloneMode:
-		b.localRunner = newLocalRunner(instFunc, b.rateLimiter, b.spawnCount, b.spawnRate)
+		b.localRunner = newLocalRunner(userConfig, b.rateLimiter, b.spawnCount, b.spawnRate)
 		b.localRunner.setLogger(b.logger)
 		b.logger.Println("new local runner")
 		for _, o := range b.outputs {
@@ -233,28 +233,40 @@ func (b *Boomer) Quit() {
 	}
 }
 
-// Run tasks without connecting to the master.
-func runUserForTest(userInstFunc UserInstFunc) {
-	userInst, err := userInstFunc()
-	if err != nil {
-		panic(err)
+// runUserForTest run task for debug
+func runUserForTest(config *UserConfig) {
+	userInst := NewUser(config)
+
+	if userInst.startFunc != nil {
+		err := userInst.startFunc(userInst)
+		if err != nil {
+			panic(err)
+		}
 	}
 
-	for _, task := range userInst.GetAllTasks() {
+	for _, task := range userInst.tasks {
 		log.Println("Running " + task.Name)
 		task.Fn(userInst)
+
+		if userInst.waitTimeFunc != nil {
+			time.Sleep(userInst.waitTimeFunc())
+		}
+	}
+
+	if userInst.stopFunc != nil {
+		userInst.stopFunc(userInst)
 	}
 }
 
 // Run accepts a slice of Task and connects to a locust master.
 // It's a convenience function to use the defaultBoomer.
-func Run(userInstFunc UserInstFunc) {
+func Run(config *UserConfig) {
 	if !flag.Parsed() {
 		flag.Parse()
 	}
 
 	if runTasks != "" {
-		runUserForTest(userInstFunc)
+		runUserForTest(config)
 		return
 	}
 
@@ -270,7 +282,7 @@ func Run(userInstFunc UserInstFunc) {
 	defaultBoomer.EnableMemoryProfile(memoryProfileFile, memoryProfileDuration)
 	defaultBoomer.EnableCPUProfile(cpuProfileFile, cpuProfileDuration)
 
-	defaultBoomer.Run(userInstFunc)
+	defaultBoomer.Run(config)
 
 	quitByMe := false
 	quitChan := make(chan bool)
