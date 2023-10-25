@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -51,6 +52,8 @@ type runner struct {
 	outputs []Output
 
 	logger *log.Logger
+
+	userInstFunc UserInstFunc
 }
 
 func (r *runner) setLogger(logger *log.Logger) {
@@ -61,7 +64,7 @@ func (r *runner) setLogger(logger *log.Logger) {
 
 // safeRun runs fn and recovers from unexpected panics.
 // it prevents panics from Task.Fn crashing boomer.
-func (r *runner) safeRun(fn func()) {
+func (r *runner) safeRun(fn func(User), user User) {
 	defer func() {
 		// don't panic
 		err := recover()
@@ -73,7 +76,7 @@ func (r *runner) safeRun(fn func()) {
 			os.Stderr.Write(stackTrace)
 		}
 	}()
-	fn()
+	fn(user)
 }
 
 func (r *runner) addOutput(o Output) {
@@ -96,7 +99,7 @@ func (r *runner) outputOnStart() {
 	wg.Wait()
 }
 
-func (r *runner) outputOnEevent(data map[string]interface{}) {
+func (r *runner) outputOnEvent(data map[string]interface{}) {
 	size := len(r.outputs)
 	if size == 0 {
 		return
@@ -135,10 +138,15 @@ func (r *runner) addWorkers(gapCount int) {
 		case <-r.shutdownChan:
 			return
 		default:
+			userInst, err := r.userInstFunc()
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+
 			ctx, cancel := context.WithCancel(context.TODO())
 			r.cancelFuncs = append(r.cancelFuncs, cancel)
 			go func(ctx context.Context) {
-				index := 0
 				for {
 					select {
 					case <-ctx.Done():
@@ -149,26 +157,38 @@ func (r *runner) addWorkers(gapCount int) {
 						if r.rateLimitEnabled {
 							blocked := r.rateLimiter.Acquire()
 							if !blocked {
-								task := r.getTask(index)
-								r.safeRun(task.Fn)
-								index++
-								if index == r.totalTaskWeight {
-									index = 0
-								}
+								task := GetNextTask(userInst.GetAllTasks())
+								r.safeRun(task.Fn, userInst)
 							}
 						} else {
-							task := r.getTask(index)
-							r.safeRun(task.Fn)
-							index++
-							if index == r.totalTaskWeight {
-								index = 0
-							}
+							task := GetNextTask(userInst.GetAllTasks())
+							r.safeRun(task.Fn, userInst)
 						}
 					}
 				}
 			}(ctx)
 		}
 	}
+}
+
+func GetNextTask(tasks []*Task) *Task {
+	totalWeight := 0
+	for _, task := range tasks {
+		if task.Weight == 0 {
+			task.Weight = 1
+		}
+		totalWeight += task.Weight
+	}
+
+	randNum := rand.Intn(totalWeight)
+	for _, task := range tasks {
+		randNum -= task.Weight
+		if randNum < 0 {
+			return task
+		}
+	}
+
+	panic("no task")
 }
 
 // reduceWorkers Stop the goroutines and remove it from the cancelFuncs
@@ -182,7 +202,6 @@ func (r *runner) reduceWorkers(gapCount int) {
 	}
 
 	r.cancelFuncs = r.cancelFuncs[:num]
-
 }
 
 func (r *runner) spawnWorkers(spawnCount int, spawnCompleteFunc func()) {
@@ -264,10 +283,10 @@ type localRunner struct {
 	spawnCount int
 }
 
-func newLocalRunner(tasks []*Task, rateLimiter RateLimiter, spawnCount int, spawnRate float64) (r *localRunner) {
+func newLocalRunner(userInstFunc UserInstFunc, rateLimiter RateLimiter, spawnCount int, spawnRate float64) (r *localRunner) {
 	r = &localRunner{}
 	r.setLogger(log.Default())
-	r.setTasks(tasks)
+	r.userInstFunc = userInstFunc
 	r.spawnRate = spawnRate
 	r.spawnCount = spawnCount
 	r.shutdownChan = make(chan bool)
@@ -293,7 +312,7 @@ func (r *localRunner) run() {
 			select {
 			case data := <-r.stats.messageToRunnerChan:
 				data["user_count"] = r.numClients
-				r.outputOnEevent(data)
+				r.outputOnEvent(data)
 			case <-r.shutdownChan:
 				Events.Publish(EVENT_QUIT)
 				r.stop()
@@ -341,12 +360,12 @@ type slaveRunner struct {
 	client                     client
 }
 
-func newSlaveRunner(masterHost string, masterPort int, tasks []*Task, rateLimiter RateLimiter) (r *slaveRunner) {
+func newSlaveRunner(masterHost string, masterPort int, userInstFunc UserInstFunc, rateLimiter RateLimiter) (r *slaveRunner) {
 	r = &slaveRunner{}
 	r.setLogger(log.Default())
 	r.masterHost = masterHost
 	r.masterPort = masterPort
-	r.setTasks(tasks)
+	r.userInstFunc = userInstFunc
 	r.waitForAck = sync.WaitGroup{}
 	r.nodeID = getNodeID()
 	r.shutdownChan = make(chan bool)
@@ -588,7 +607,7 @@ func (r *slaveRunner) run() {
 				data["user_count"] = r.numClients
 				data["user_classes_count"] = r.userClassesCountFromMaster
 				r.client.sendChannel() <- newGenericMessage("stats", data, r.nodeID)
-				r.outputOnEevent(data)
+				r.outputOnEvent(data)
 			case <-r.shutdownChan:
 				r.outputOnStop()
 				return

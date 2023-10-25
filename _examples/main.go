@@ -1,17 +1,30 @@
 package main
 
 import (
+	"fmt"
 	"log"
-	"os"
-	"os/signal"
-	"sync"
-	"syscall"
 	"time"
 
-	"github.com/myzhan/boomer"
+	"github.com/wwwzyb2002/boomer"
 )
 
-func foo() {
+type SampleUser struct {
+	tasks []*boomer.Task
+}
+
+func (t *SampleUser) OnStart() {
+	fmt.Println("OnStart")
+}
+
+func (t *SampleUser) OnStop() {
+	fmt.Println("OnStop")
+}
+
+func (t *SampleUser) GetAllTasks() []*boomer.Task {
+	return t.tasks
+}
+
+func foo(user boomer.User) {
 	start := time.Now()
 	time.Sleep(100 * time.Millisecond)
 	elapsed := time.Since(start)
@@ -21,7 +34,7 @@ func foo() {
 	globalBoomer.RecordSuccess("http", "foo", elapsed.Nanoseconds()/int64(time.Millisecond), int64(10))
 }
 
-func bar() {
+func bar(user boomer.User) {
 	start := time.Now()
 	time.Sleep(100 * time.Millisecond)
 	elapsed := time.Since(start)
@@ -31,48 +44,30 @@ func bar() {
 	globalBoomer.RecordFailure("udp", "bar", elapsed.Nanoseconds()/int64(time.Millisecond), "udp error")
 }
 
-func waitForQuit() {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
-	quitByMe := false
-	go func() {
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-		<-c
-		quitByMe = true
-		globalBoomer.Quit()
-		wg.Done()
-	}()
-
-	boomer.Events.Subscribe(boomer.EVENT_QUIT, func() {
-		if !quitByMe {
-			wg.Done()
-		}
-	})
-
-	wg.Wait()
-}
-
-var globalBoomer = boomer.NewBoomer("127.0.0.1", 5557)
+var globalBoomer = boomer.NewStandaloneBoomer(10, 1)
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	task1 := &boomer.Task{
-		Name:   "foo",
-		Weight: 10,
-		Fn:     foo,
-	}
+	globalBoomer.AddOutput(boomer.NewConsoleOutput())
+	globalBoomer.Run(
+		func() (boomer.User, error) {
+			task1 := &boomer.Task{
+				Name:   "foo",
+				Weight: 1000,
+				Fn:     foo,
+			}
 
-	task2 := &boomer.Task{
-		Name:   "bar",
-		Weight: 30,
-		Fn:     bar,
-	}
+			task2 := &boomer.Task{
+				Name:   "bar",
+				Weight: 9000,
+				Fn:     bar,
+			}
 
-	globalBoomer.Run(task1, task2)
+			fmt.Println("CreateSampleUser")
 
-	waitForQuit()
-	log.Println("shutdown")
+			return &SampleUser{
+				tasks: []*boomer.Task{task1, task2},
+			}, nil
+		})
 }

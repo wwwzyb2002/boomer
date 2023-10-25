@@ -12,7 +12,7 @@ This is a quick example of writing test scenarios with boomer.
     package main
 
     import "time"
-    import "github.com/myzhan/boomer"
+    import "github.com/wwwzyb2002/boomer"
 
     func foo(){
         start := time.Now()

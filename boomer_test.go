@@ -2,6 +2,7 @@ package boomer
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -14,8 +15,23 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Test Boomer", func() {
+type SampleUser struct {
+	tasks []*Task
+}
 
+func (t *SampleUser) OnStart() {
+	fmt.Println("OnStart")
+}
+
+func (t *SampleUser) OnStop() {
+	fmt.Println("OnStop")
+}
+
+func (t *SampleUser) GetAllTasks() []*Task {
+	return t.tasks
+}
+
+var _ = Describe("Test Boomer", func() {
 	It("test new instance", func() {
 		b := NewBoomer("0.0.0.0", 1234)
 		Expect(b.masterHost).To(Equal("0.0.0.0"))
@@ -78,13 +94,17 @@ var _ = Describe("Test Boomer", func() {
 		count := int64(0)
 		taskA := &Task{
 			Name: "increaseCount",
-			Fn: func() {
+			Fn: func(u User) {
 				atomic.AddInt64(&count, 1)
 				runtime.Goexit()
 			},
 		}
 
-		go b.Run(taskA)
+		go b.Run(func() (User, error) {
+			return &SampleUser{
+				tasks: []*Task{taskA},
+			}, nil
+		})
 		defer b.Quit()
 		defer os.Remove("cpu.pprof")
 		defer os.Remove("mem.pprof")
@@ -103,12 +123,16 @@ var _ = Describe("Test Boomer", func() {
 		count := int64(0)
 		taskA := &Task{
 			Name: "increaseCount",
-			Fn: func() {
+			Fn: func(User) {
 				atomic.AddInt64(&count, 1)
 				runtime.Goexit()
 			},
 		}
-		b.Run(taskA)
+		b.Run(func() (User, error) {
+			return &SampleUser{
+				tasks: []*Task{taskA},
+			}, nil
+		})
 		defer b.Quit()
 
 		serverMessage := newGenericMessage("spawn", map[string]interface{}{
@@ -136,21 +160,25 @@ var _ = Describe("Test Boomer", func() {
 		count := 0
 		taskA := &Task{
 			Name: "increaseCount",
-			Fn: func() {
+			Fn: func(user User) {
 				count++
 			},
 		}
 		taskWithoutName := &Task{
 			Name: "",
-			Fn: func() {
+			Fn: func(User) {
 				count++
 			},
 		}
 		runTasks = "increaseCount,foobar"
 
-		runTasksForTest(taskA, taskWithoutName)
+		runUserForTest(func() (User, error) {
+			return &SampleUser{
+				tasks: []*Task{taskA, taskWithoutName},
+			}, nil
+		})
 
-		Expect(count).To(Equal(1))
+		Expect(count).To(Equal(2))
 	})
 
 	It("test create ratelimiter", func() {
@@ -187,13 +215,17 @@ var _ = Describe("Test Boomer", func() {
 		count := int64(0)
 		taskA := &Task{
 			Name: "increaseCount",
-			Fn: func() {
+			Fn: func(user User) {
 				atomic.AddInt64(&count, 1)
 				runtime.Goexit()
 			},
 		}
 
-		go Run(taskA)
+		go Run(func() (User, error) {
+			return &SampleUser{
+				tasks: []*Task{taskA},
+			}, nil
+		})
 		time.Sleep(50 * time.Millisecond)
 		defer defaultBoomer.Quit()
 

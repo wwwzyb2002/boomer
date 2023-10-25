@@ -1,4 +1,4 @@
-# boomer [![Build Status](https://github.com/myzhan/boomer/actions/workflows/unittest.yml/badge.svg)](https://github.com/myzhan/boomer/actions) [![Go Report Card](https://goreportcard.com/badge/github.com/myzhan/boomer)](https://goreportcard.com/report/github.com/myzhan/boomer) [![Coverage Status](https://codecov.io/gh/myzhan/boomer/branch/master/graph/badge.svg)](https://codecov.io/gh/myzhan/boomer) [![Documentation Status](https://readthedocs.org/projects/boomer/badge/?version=latest)](https://boomer.readthedocs.io/en/latest/?badge=latest)
+# boomer [![Build Status](https://github.com/wwwzyb2002/boomer/actions/workflows/unittest.yml/badge.svg)](https://github.com/wwwzyb2002/boomer/actions) [![Go Report Card](https://goreportcard.com/badge/github.com/wwwzyb2002/boomer)](https://goreportcard.com/report/github.com/wwwzyb2002/boomer) [![Coverage Status](https://codecov.io/gh/wwwzyb2002/boomer/branch/master/graph/badge.svg)](https://codecov.io/gh/wwwzyb2002/boomer) [![Documentation Status](https://readthedocs.org/projects/boomer/badge/?version=latest)](https://boomer.readthedocs.io/en/latest/?badge=latest)
 
 ## Links
 
@@ -26,9 +26,9 @@ If locust introduces breaking changes, boomer will have a tagged version that wo
 
 ```bash
 # Install the master branch
-$ go get github.com/myzhan/boomer@master
+$ go get github.com/wwwzyb2002/boomer@master
 # Install a tagged version that works with locust 1.6.0
-$ go get github.com/myzhan/boomer@v1.6.0
+$ go get github.com/wwwzyb2002/boomer@v1.6.0
 ```
 
 ### Build
@@ -56,48 +56,76 @@ This is a example of boomer's API. You can find more in the "examples" directory
 ```go
 package main
 
-import "time"
-import "github.com/myzhan/boomer"
+import (
+	"fmt"
+	"log"
+	"time"
 
-func foo(){
-    start := time.Now()
-    time.Sleep(100 * time.Millisecond)
-    elapsed := time.Since(start)
+	"github.com/wwwzyb2002/boomer"
+)
 
-    /*
-    Report your test result as a success, if you write it in locust, it will looks like this
-    events.request_success.fire(request_type="http", name="foo", response_time=100, response_length=10)
-    */
-    boomer.RecordSuccess("http", "foo", elapsed.Nanoseconds()/int64(time.Millisecond), int64(10))
+type SampleUser struct {
+	tasks []*boomer.Task
 }
 
-func bar(){
-    start := time.Now()
-    time.Sleep(100 * time.Millisecond)
-    elapsed := time.Since(start)
-
-    /*
-    Report your test result as a failure, if you write it in locust, it will looks like this
-    events.request_failure.fire(request_type="udp", name="bar", response_time=100, exception=Exception("udp error"))
-    */
-    boomer.RecordFailure("udp", "bar", elapsed.Nanoseconds()/int64(time.Millisecond), "udp error")
+func (t *SampleUser) OnStart() {
+	fmt.Println("OnStart")
 }
 
-func main(){
-    task1 := &boomer.Task{
-        Name: "foo",
-        // The weight is used to distribute goroutines over multiple tasks.
-        Weight: 10,
-        Fn: foo,
-    }
+func (t *SampleUser) OnStop() {
+	fmt.Println("OnStop")
+}
 
-    task2 := &boomer.Task{
-        Name: "bar",
-        Weight: 20,
-        Fn: bar,
-    }
+func (t *SampleUser) GetAllTasks() []*boomer.Task {
+	return t.tasks
+}
 
-    boomer.Run(task1, task2)
+func foo(user boomer.User) {
+	start := time.Now()
+	time.Sleep(100 * time.Millisecond)
+	elapsed := time.Since(start)
+
+	// Report your test result as a success, if you write it in python, it will looks like this
+	// events.request_success.fire(request_type="http", name="foo", response_time=100, response_length=10)
+	globalBoomer.RecordSuccess("http", "foo", elapsed.Nanoseconds()/int64(time.Millisecond), int64(10))
+}
+
+func bar(user boomer.User) {
+	start := time.Now()
+	time.Sleep(100 * time.Millisecond)
+	elapsed := time.Since(start)
+
+	// Report your test result as a failure, if you write it in python, it will looks like this
+	// events.request_failure.fire(request_type="udp", name="bar", response_time=100, exception=Exception("udp error"))
+	globalBoomer.RecordFailure("udp", "bar", elapsed.Nanoseconds()/int64(time.Millisecond), "udp error")
+}
+
+var globalBoomer = boomer.NewStandaloneBoomer(10, 1)
+
+func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	globalBoomer.AddOutput(boomer.NewConsoleOutput())
+	globalBoomer.Run(
+		func() (boomer.User, error) {
+			task1 := &boomer.Task{
+				Name:   "foo",
+				Weight: 1000,
+				Fn:     foo,
+			}
+
+			task2 := &boomer.Task{
+				Name:   "bar",
+				Weight: 9000,
+				Fn:     bar,
+			}
+
+			fmt.Println("CreateSampleUser")
+
+			return &SampleUser{
+				tasks: []*boomer.Task{task1, task2},
+			}, nil
+		})
 }
 ```
 

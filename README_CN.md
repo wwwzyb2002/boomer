@@ -1,4 +1,4 @@
-# boomer [![Build Status](https://github.com/myzhan/boomer/actions/workflows/unittest.yml/badge.svg)](https://github.com/myzhan/boomer/actions) [![Go Report Card](https://goreportcard.com/badge/github.com/myzhan/boomer)](https://goreportcard.com/report/github.com/myzhan/boomer) [![Coverage Status](https://codecov.io/gh/myzhan/boomer/branch/master/graph/badge.svg)](https://codecov.io/gh/myzhan/boomer) [![Documentation Status](https://readthedocs.org/projects/boomer/badge/?version=latest)](https://boomer.readthedocs.io/en/latest/?badge=latest)
+# boomer [![Build Status](https://github.com/wwwzyb2002/boomer/actions/workflows/unittest.yml/badge.svg)](https://github.com/wwwzyb2002/boomer/actions) [![Go Report Card](https://goreportcard.com/badge/github.com/wwwzyb2002/boomer)](https://goreportcard.com/report/github.com/wwwzyb2002/boomer) [![Coverage Status](https://codecov.io/gh/wwwzyb2002/boomer/branch/master/graph/badge.svg)](https://codecov.io/gh/wwwzyb2002/boomer) [![Documentation Status](https://readthedocs.org/projects/boomer/badge/?version=latest)](https://boomer.readthedocs.io/en/latest/?badge=latest)
 
 ## boomer是什么？
 
@@ -14,9 +14,9 @@ boomer 的版本号跟随 locust 的版本，如果 locust 引入不兼容的改
 
 ```bash
 # 安装 master 分支
-$ go get github.com/myzhan/boomer@master
+$ go get github.com/wwwzyb2002/boomer@master
 # 安装 v1.6.0 版本
-$ go get github.com/myzhan/boomer@v1.6.0
+$ go get github.com/wwwzyb2002/boomer@v1.6.0
 ```
 
 ### 编译
@@ -43,45 +43,76 @@ $ go get -u github.com/myzhan/gomq
 ```go
 package main
 
-import "time"
-import "github.com/myzhan/boomer"
+import (
+	"fmt"
+	"log"
+	"time"
 
-func foo(){
-    start := time.Now()
-    time.Sleep(100 * time.Millisecond)
-    elapsed := time.Since(start)
+	"github.com/wwwzyb2002/boomer"
+)
 
-    /*
-    汇报一个成功的结果，实际使用时，根据实际场景，自行判断成功还是失败
-    */
-    boomer.RecordSuccess("http", "foo", elapsed.Nanoseconds()/int64(time.Millisecond), int64(10))
+type SampleUser struct {
+	tasks []*boomer.Task
 }
 
-func bar(){
-    start := time.Now()
-    time.Sleep(100 * time.Millisecond)
-    elapsed := time.Since(start)
-
-    /*
-    汇报一个失败的结果，实际使用时，根据实际场景，自行判断成功还是失败
-    */
-    boomer.RecordFailure("udp", "bar", elapsed.Nanoseconds()/int64(time.Millisecond), "udp error")
+func (t *SampleUser) OnStart() {
+	fmt.Println("OnStart")
 }
 
-func main(){
-    task1 := &boomer.Task{
-        // 同时跑多个 tasks 的时候，Weight 字段用于分配 goroutines
-        Weight: 10,
-        Fn: foo,
-    }
+func (t *SampleUser) OnStop() {
+	fmt.Println("OnStop")
+}
 
-    task2 := &boomer.Task{
-        Weight: 20,
-        Fn: bar,
-    }
+func (t *SampleUser) GetAllTasks() []*boomer.Task {
+	return t.tasks
+}
 
-    // 连接到 master，等待页面上下发指令，支持多个 Task
-    boomer.Run(task1, task2)
+func foo(user boomer.User) {
+	start := time.Now()
+	time.Sleep(100 * time.Millisecond)
+	elapsed := time.Since(start)
+
+	// Report your test result as a success, if you write it in python, it will looks like this
+	// events.request_success.fire(request_type="http", name="foo", response_time=100, response_length=10)
+	globalBoomer.RecordSuccess("http", "foo", elapsed.Nanoseconds()/int64(time.Millisecond), int64(10))
+}
+
+func bar(user boomer.User) {
+	start := time.Now()
+	time.Sleep(100 * time.Millisecond)
+	elapsed := time.Since(start)
+
+	// Report your test result as a failure, if you write it in python, it will looks like this
+	// events.request_failure.fire(request_type="udp", name="bar", response_time=100, exception=Exception("udp error"))
+	globalBoomer.RecordFailure("udp", "bar", elapsed.Nanoseconds()/int64(time.Millisecond), "udp error")
+}
+
+var globalBoomer = boomer.NewStandaloneBoomer(10, 1)
+
+func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	globalBoomer.AddOutput(boomer.NewConsoleOutput())
+	globalBoomer.Run(
+		func() (boomer.User, error) {
+			task1 := &boomer.Task{
+				Name:   "foo",
+				Weight: 1000,
+				Fn:     foo,
+			}
+
+			task2 := &boomer.Task{
+				Name:   "bar",
+				Weight: 9000,
+				Fn:     bar,
+			}
+
+			fmt.Println("CreateSampleUser")
+
+			return &SampleUser{
+				tasks: []*boomer.Task{task1, task2},
+			}, nil
+		})
 }
 ```
 

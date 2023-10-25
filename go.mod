@@ -1,4 +1,4 @@
-module github.com/myzhan/boomer
+module github.com/wwwzyb2002/boomer
 
 go 1.13
 
