@@ -143,6 +143,7 @@ func (r *runner) addWorkers(gapCount int) {
 				fmt.Println(err)
 				return
 			}
+			userInst.OnStart()
 
 			ctx, cancel := context.WithCancel(context.TODO())
 			r.cancelFuncs = append(r.cancelFuncs, cancel)
@@ -150,8 +151,10 @@ func (r *runner) addWorkers(gapCount int) {
 				for {
 					select {
 					case <-ctx.Done():
+						userInst.OnStop()
 						return
 					case <-r.shutdownChan:
+						userInst.OnStop()
 						return
 					default:
 						if r.rateLimitEnabled {
