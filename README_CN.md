@@ -51,23 +51,7 @@ import (
 	"github.com/wwwzyb2002/boomer"
 )
 
-type SampleUser struct {
-	tasks []*boomer.Task
-}
-
-func (t *SampleUser) OnStart() {
-	fmt.Println("OnStart")
-}
-
-func (t *SampleUser) OnStop() {
-	fmt.Println("OnStop")
-}
-
-func (t *SampleUser) GetAllTasks() []*boomer.Task {
-	return t.tasks
-}
-
-func foo(user boomer.User) {
+func foo(user *boomer.User) {
 	start := time.Now()
 	time.Sleep(100 * time.Millisecond)
 	elapsed := time.Since(start)
@@ -77,7 +61,7 @@ func foo(user boomer.User) {
 	globalBoomer.RecordSuccess("http", "foo", elapsed.Nanoseconds()/int64(time.Millisecond), int64(10))
 }
 
-func bar(user boomer.User) {
+func bar(user *boomer.User) {
 	start := time.Now()
 	time.Sleep(100 * time.Millisecond)
 	elapsed := time.Since(start)
@@ -92,28 +76,35 @@ var globalBoomer = boomer.NewStandaloneBoomer(10, 1)
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	globalBoomer.AddOutput(boomer.NewConsoleOutput())
-	globalBoomer.Run(
-		func() (boomer.User, error) {
-			task1 := &boomer.Task{
+	userConfig := &boomer.UserConfig{
+		Tasks: []*boomer.Task{
+			{
 				Name:   "foo",
 				Weight: 1000,
 				Fn:     foo,
-			}
-
-			task2 := &boomer.Task{
+			},
+			{
 				Name:   "bar",
 				Weight: 9000,
 				Fn:     bar,
-			}
+			},
+		},
+		StartFunc: func(user *boomer.User) error {
+			fmt.Println("user start")
+			return nil
+		},
+		StopFunc: func(user *boomer.User) {
+			fmt.Println("user stop")
+		},
+		WaitTime: func() time.Duration {
+			return 100 * time.Millisecond
+		},
+	}
 
-			fmt.Println("CreateSampleUser")
-
-			return &SampleUser{
-				tasks: []*boomer.Task{task1, task2},
-			}, nil
-		})
+	globalBoomer.AddOutput(boomer.NewConsoleOutput())
+	globalBoomer.Run(userConfig)
 }
+
 ```
 
 ## 使用

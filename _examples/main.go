@@ -8,15 +8,6 @@ import (
 	"github.com/wwwzyb2002/boomer"
 )
 
-func startFunc(user *boomer.User) error {
-	fmt.Println("user start")
-	return nil
-}
-
-func stopFunc(user *boomer.User) {
-	fmt.Println("user stop")
-}
-
 func foo(user *boomer.User) {
 	start := time.Now()
 	time.Sleep(100 * time.Millisecond)
@@ -55,9 +46,16 @@ func main() {
 				Fn:     bar,
 			},
 		},
-		StartFunc: startFunc,
-		StopFunc:  stopFunc,
-		WaitTime:  nil,
+		StartFunc: func(user *boomer.User) error {
+			fmt.Println("user start")
+			return nil
+		},
+		StopFunc: func(user *boomer.User) {
+			fmt.Println("user stop")
+		},
+		WaitTime: func() time.Duration {
+			return 100 * time.Millisecond
+		},
 	}
 
 	globalBoomer.AddOutput(boomer.NewConsoleOutput())
